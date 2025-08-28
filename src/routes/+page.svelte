@@ -351,4 +351,38 @@
     .notification { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 1rem 1.5rem; border-radius: 8px; background-color: #f87171; color: white; font-weight: 500; box-shadow: 0 4px 15px rgba(0,0,0,0.1); animation: slideIn 0.3s ease-out; }
     .notification.success { background-color: #4ade80; }
     @keyframes slideIn { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+    /* --- 모바일 반응형 스타일 --- */
+    @media (max-width: 640px) {
+        .title {
+            font-size: 1.5rem;
+        }
+        .title.small {
+            font-size: 1.25rem;
+        }
+        .page-container {
+            padding: 1.5rem;
+        }
+        .recipient {
+            font-size: 1.8rem;
+        }
+        .message-input, .author-input {
+            font-size: 1.6rem;
+        }
+        .letter-message {
+            font-size: 1.6rem;
+        }
+        .letter-author {
+            font-size: 1rem;
+        }
+        .like-button {
+            font-size: 1.25rem;
+        }
+        .like-count {
+            font-size: 1rem;
+        }
+        .main-nav button {
+            font-size: 0.9rem;
+        }
+    }
 </style>
