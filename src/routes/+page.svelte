@@ -1,12 +1,13 @@
 <!--
   src/routes/+page.svelte
 
-  페이지 로딩 시 fadeIn 애니메이션은 유지하고, 캐러셀 슬라이드 애니메이션만 제거한 버전입니다.
+  Firestore의 onSnapshot을 사용하여 편지함을 실시간으로 업데이트하는 버전입니다.
+  편지함에 '좋아요' 기능과 애니메이션을 추가했습니다.
 -->
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import { initializeApp } from 'firebase/app';
-    import { getFirestore, collection, getDocs, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+    import { getFirestore, collection, getDocs, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, updateDoc, increment } from 'firebase/firestore';
 
     // --- Firebase 설정 (환경 변수 사용) ---
     const firebaseConfig = {
@@ -31,7 +32,7 @@
     let letters = [];
 
     let isLoadingSoldiers = true;
-    let isLoadingLetters = false;
+    let isLoadingLetters = true;
 
     let selectedSoldierForWrite = null;
     let selectedSoldierForMailbox = null;
@@ -40,40 +41,49 @@
     let notification = '';
     let currentLetterIndex = 0;
 
-    // --- 데이터 로직 ---
-    onMount(async () => {
-        try {
-            const querySnapshot = await getDocs(collection(db, "soldiers"));
-            soldiers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } catch (error) {
-            console.error("장병 목록 로딩 오류:", error);
-            showNotification("장병 목록을 불러오는데 실패했습니다.");
-        } finally {
-            isLoadingSoldiers = false;
-        }
-    });
+    let unsubscribeLetters = null;
+    let likedLetterId = null; // 좋아요 애니메이션을 위한 상태 변수
 
-    async function fetchLetters() {
-        if (letters.length > 0) return;
-        isLoadingLetters = true;
-        try {
-            const q = query(collection(db, "letters"), orderBy("createdAt", "desc"));
-            const querySnapshot = await getDocs(q);
+    // --- 데이터 로직 ---
+    onMount(() => {
+        const fetchSoldiers = async () => {
+            try {
+                const querySnapshot = await getDocs(collection(db, "soldiers"));
+                soldiers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            } catch (error) {
+                console.error("장병 목록 로딩 오류:", error);
+                showNotification("장병 목록을 불러오는데 실패했습니다.");
+            } finally {
+                isLoadingSoldiers = false;
+            }
+        };
+
+        const q = query(collection(db, "letters"), orderBy("createdAt", "desc"));
+        unsubscribeLetters = onSnapshot(q, (querySnapshot) => {
             letters = querySnapshot.docs.map(doc => {
                 const data = doc.data();
                 return {
                     id: doc.id,
                     ...data,
+                    likes: data.likes || 0, // 좋아요 필드가 없을 경우 기본값 0
                     createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
                 };
             });
-        } catch (error) {
-            console.error("편지 목록 로딩 오류:", error);
-            showNotification("편지 목록을 불러오는데 실패했습니다.");
-        } finally {
             isLoadingLetters = false;
+        }, (error) => {
+            console.error("편지 실시간 로딩 오류:", error);
+            showNotification("편지를 실시간으로 불러오는데 실패했습니다.");
+            isLoadingLetters = false;
+        });
+
+        fetchSoldiers();
+    });
+
+    onDestroy(() => {
+        if (unsubscribeLetters) {
+            unsubscribeLetters();
         }
-    }
+    });
 
     async function handleSubmit() {
         if (!author.trim() || !message.trim()) {
@@ -81,20 +91,33 @@
             return;
         }
         try {
-            const newLetter = {
+            await addDoc(collection(db, "letters"), {
                 to: selectedSoldierForWrite.name,
                 from: author,
                 message: message,
+                likes: 0, // 좋아요 필드 초기화
                 createdAt: serverTimestamp()
-            };
-            await addDoc(collection(db, "letters"), newLetter);
-            letters = [{ ...newLetter, createdAt: new Date() }, ...letters];
+            });
             showNotification(`${selectedSoldierForWrite.name}님에게 편지를 성공적으로 보냈습니다!`, 'success');
             goBackToWriteList();
         } catch (error) {
             console.error("편지 저장 오류: ", error);
             showNotification("편지 전송에 실패했습니다. 다시 시도해주세요.");
         }
+    }
+
+    // 좋아요 처리 함수
+    async function handleLike(letterId) {
+        const letterRef = doc(db, "letters", letterId);
+
+        // 애니메이션 트리거
+        likedLetterId = letterId;
+        setTimeout(() => { likedLetterId = null; }, 600);
+
+        // Firestore 데이터 업데이트
+        await updateDoc(letterRef, {
+            likes: increment(1)
+        });
     }
 
     // --- UI 로직 ---
@@ -123,9 +146,6 @@
 
     function changeView(view) {
         activeView = view;
-        if (view === 'mailbox') {
-            fetchLetters();
-        }
     }
 
     function showNotification(msg, type = 'error') {
@@ -228,6 +248,15 @@
                                 <p class="letter-message">"{filteredLetters[currentLetterIndex].message}"</p>
                                 <div class="letter-footer">
                                     <span class="letter-author">From. {filteredLetters[currentLetterIndex].from}</span>
+                                    <div class="like-section">
+                                        <button
+                                                class="like-button"
+                                                class:animate={likedLetterId === filteredLetters[currentLetterIndex].id}
+                                                on:click={() => handleLike(filteredLetters[currentLetterIndex].id)}>
+                                            ❤️
+                                        </button>
+                                        <span class="like-count">{filteredLetters[currentLetterIndex].likes}</span>
+                                    </div>
                                     <span class="letter-date">{formatDate(filteredLetters[currentLetterIndex].createdAt)}</span>
                                 </div>
                             </div>
@@ -282,73 +311,31 @@
     .mailbox-header { display: flex; align-items: center; margin-bottom: 2rem; gap: 0.5rem; }
     .back-button { background: none; border: none; font-size: 1rem; font-weight: 500; color: #64748b; cursor: pointer; padding: 0.5rem; white-space: nowrap; }
 
-    .letter-carousel {
-        min-height: 300px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-    }
-    .letter-page {
-        background-color: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 2rem;
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    }
-    .letter-message {
-        flex-grow: 1;
-        font-family: 'Nanum Pen Script', cursive;
-        font-size: 1.8rem;
-        line-height: 1.6;
-        color: #334155;
-        margin: 0 0 1.5rem;
-        white-space: pre-wrap;
-        min-height: 150px;
-    }
-    .letter-footer {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 1rem;
-        color: #64748b;
-        border-top: 1px solid #e2e8f0;
-        padding-top: 1rem;
-    }
-    .letter-author { font-weight: 500; }
+    .letter-carousel { min-height: 300px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .letter-page { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 2rem; width: 100%; display: flex; flex-direction: column; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+    .letter-message { flex-grow: 1; font-family: 'Nanum Pen Script', cursive; font-size: 1.8rem; line-height: 1.6; color: #334155; margin: 0 0 1.5rem; white-space: pre-wrap; min-height: 150px; }
 
-    .carousel-controls {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-top: 1.5rem;
+    .letter-footer { display: flex; justify-content: space-between; align-items: center; font-size: 1rem; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
+    .letter-author { font-weight: 500; }
+    .letter-date { text-align: right; }
+
+    /* --- 좋아요 기능 스타일 --- */
+    .like-section { display: flex; align-items: center; gap: 0.5rem; }
+    .like-button { background: none; border: none; padding: 0.5rem; cursor: pointer; font-size: 1.5rem; transform-origin: center; }
+    .like-button.animate { animation: pop 0.6s cubic-bezier(.18,.89,.32,1.28); }
+    .like-count { font-weight: 500; font-size: 1.1rem; color: #334155; }
+
+    @keyframes pop {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.5); }
+        100% { transform: scale(1); }
     }
-    .carousel-controls button {
-        background-color: #e2e8f0;
-        color: #475569;
-        border: none;
-        padding: 0.6rem 1.2rem;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 700;
-        cursor: pointer;
-        transition: background-color 0.2s ease;
-    }
-    .carousel-controls button:hover:not(:disabled) {
-        background-color: #cbd5e1;
-    }
-    .carousel-controls button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    .carousel-controls span {
-        font-size: 1rem;
-        font-weight: 500;
-        color: #64748b;
-    }
+
+    .carousel-controls { display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; }
+    .carousel-controls button { background-color: #e2e8f0; color: #475569; border: none; padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: background-color 0.2s ease; }
+    .carousel-controls button:hover:not(:disabled) { background-color: #cbd5e1; }
+    .carousel-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .carousel-controls span { font-size: 1rem; font-weight: 500; color: #64748b; }
 
     .notification { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 1rem 1.5rem; border-radius: 8px; background-color: #f87171; color: white; font-weight: 500; box-shadow: 0 4px 15px rgba(0,0,0,0.1); animation: slideIn 0.3s ease-out; }
     .notification.success { background-color: #4ade80; }
