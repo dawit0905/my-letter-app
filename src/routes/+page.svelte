@@ -1,15 +1,30 @@
 <!--
   src/routes/+page.svelte
 
-  '편지함 보기' 탭이 추가된 버전입니다.
-  - Firestore에서 작성된 편지 목록을 불러와 보여줍니다.
-  - 최신순으로 편지를 정렬합니다.
-  - 장병을 선택하여 해당 장병의 편지만 필터링해서 볼 수 있습니다.
+  편지함을 책장처럼 넘겨보는 UI로 변경한 버전입니다.
 -->
 <script>
     import { onMount } from 'svelte';
     import { initializeApp } from 'firebase/app';
     import { getFirestore, collection, getDocs, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+    import { quintOut } from 'svelte/easing';
+    import { crossfade } from 'svelte/transition';
+
+    const [send, receive] = crossfade({
+        duration: d => Math.sqrt(d * 200),
+        fallback(node, params) {
+            const style = getComputedStyle(node);
+            const transform = style.transform === 'none' ? '' : style.transform;
+            return {
+                duration: 300,
+                easing: quintOut,
+                css: t => `
+          transform: ${transform} scale(${t});
+          opacity: ${t}
+        `
+            };
+        }
+    });
 
     // --- Firebase 설정 (환경 변수 사용) ---
     const firebaseConfig = {
@@ -26,25 +41,24 @@
     const db = getFirestore(app);
 
     // --- 상태 변수 ---
-    let activeView = 'write'; // 현재 활성화된 뷰 ('write' 또는 'mailbox')
-    let writeFlowPage = 'list'; // 편지 쓰기 플로우 내 현재 페이지 ('list' 또는 'write')
-    let mailboxFlowPage = 'list'; // 편지함 플로우 내 현재 페이지 ('list' 또는 'letters')
+    let activeView = 'write';
+    let writeFlowPage = 'list';
+    let mailboxFlowPage = 'list';
 
-    let soldiers = []; // 장병 목록
-    let letters = []; // 전체 편지 목록
+    let soldiers = [];
+    let letters = [];
 
     let isLoadingSoldiers = true;
     let isLoadingLetters = false;
 
-    let selectedSoldierForWrite = null; // 편지 쓸 때 선택한 장병
-    let selectedSoldierForMailbox = null; // 편지함에서 선택한 장병
+    let selectedSoldierForWrite = null;
+    let selectedSoldierForMailbox = null;
     let author = '';
     let message = '';
     let notification = '';
+    let currentLetterIndex = 0; // 책장 넘기기 UI를 위한 현재 편지 인덱스
 
     // --- 데이터 로직 ---
-
-    // 장병 목록 불러오기
     onMount(async () => {
         try {
             const querySnapshot = await getDocs(collection(db, "soldiers"));
@@ -57,11 +71,8 @@
         }
     });
 
-    // 편지 목록 불러오기
     async function fetchLetters() {
-        // 이미 로딩된 데이터가 있으면 다시 불러오지 않음
         if (letters.length > 0) return;
-
         isLoadingLetters = true;
         try {
             const q = query(collection(db, "letters"), orderBy("createdAt", "desc"));
@@ -74,8 +85,7 @@
                     createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
                 };
             });
-        } catch (error)
-        {
+        } catch (error) {
             console.error("편지 목록 로딩 오류:", error);
             showNotification("편지 목록을 불러오는데 실패했습니다.");
         } finally {
@@ -83,7 +93,6 @@
         }
     }
 
-    // 편지 보내기
     async function handleSubmit() {
         if (!author.trim() || !message.trim()) {
             showNotification('작성자와 메시지를 모두 입력해주세요.');
@@ -97,11 +106,7 @@
                 createdAt: serverTimestamp()
             };
             await addDoc(collection(db, "letters"), newLetter);
-
-            // 편지 보내기 성공 후, 로컬 letters 배열에도 새 편지를 추가하여
-            // 편지함으로 이동했을 때 바로 볼 수 있게 함
             letters = [{ ...newLetter, createdAt: new Date() }, ...letters];
-
             showNotification(`${selectedSoldierForWrite.name}님에게 편지를 성공적으로 보냈습니다!`, 'success');
             goBackToWriteList();
         } catch (error) {
@@ -111,7 +116,6 @@
     }
 
     // --- UI 로직 ---
-
     function handleSelectSoldierForWrite(soldier) {
         selectedSoldierForWrite = soldier;
         writeFlowPage = 'write';
@@ -127,6 +131,7 @@
     function handleSelectSoldierForMailbox(soldier) {
         selectedSoldierForMailbox = soldier;
         mailboxFlowPage = 'letters';
+        currentLetterIndex = 0; // 장병 선택 시 첫 번째 편지로 리셋
     }
 
     function goBackToMailboxList() {
@@ -151,7 +156,18 @@
         return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
-    // 선택된 장병의 편지만 필터링하는 반응형 변수
+    // 캐러셀 네비게이션 함수
+    function showNextLetter() {
+        if (currentLetterIndex < filteredLetters.length - 1) {
+            currentLetterIndex++;
+        }
+    }
+    function showPrevLetter() {
+        if (currentLetterIndex > 0) {
+            currentLetterIndex--;
+        }
+    }
+
     $: filteredLetters = selectedSoldierForMailbox
         ? letters.filter(letter => letter.to === selectedSoldierForMailbox.name)
         : [];
@@ -159,14 +175,9 @@
 </script>
 
 <main>
-    <!-- 상단 네비게이션 -->
     <nav class="main-nav">
-        <button on:click={() => changeView('write')} class:active={activeView === 'write'}>
-            💌 편지 쓰기
-        </button>
-        <button on:click={() => changeView('mailbox')} class:active={activeView === 'mailbox'}>
-            📬 편지함 보기
-        </button>
+        <button on:click={() => changeView('write')} class:active={activeView === 'write'}>💌 편지 쓰기</button>
+        <button on:click={() => changeView('mailbox')} class:active={activeView === 'mailbox'}>📬 편지함 보기</button>
     </nav>
 
     <!-- 편지 쓰기 뷰 -->
@@ -187,7 +198,6 @@
                     </ul>
                 {/if}
             {/if}
-
             {#if writeFlowPage === 'write'}
                 <div class="post-it">
                     <p class="recipient">To. {selectedSoldierForWrite.name}</p>
@@ -231,33 +241,34 @@
                 {:else if filteredLetters.length === 0}
                     <p class="loading-text">아직 도착한 편지가 없어요.</p>
                 {:else}
-                    <div class="letter-grid">
-                        {#each filteredLetters as letter (letter.id)}
-                            <div class="letter-card">
-                                <p class="letter-recipient">To. {letter.to}</p>
-                                <p class="letter-message">"{letter.message}"</p>
+                    <!-- 책장 넘기기 UI -->
+                    <div class="letter-carousel">
+                        {#key currentLetterIndex}
+                            <div class="letter-page" in:receive={{key: currentLetterIndex}} out:send={{key: currentLetterIndex}}>
+                                <p class="letter-message">"{filteredLetters[currentLetterIndex].message}"</p>
                                 <div class="letter-footer">
-                                    <span class="letter-author">From. {letter.from}</span>
-                                    <span class="letter-date">{formatDate(letter.createdAt)}</span>
+                                    <span class="letter-author">From. {filteredLetters[currentLetterIndex].from}</span>
+                                    <span class="letter-date">{formatDate(filteredLetters[currentLetterIndex].createdAt)}</span>
                                 </div>
                             </div>
-                        {/each}
+                        {/key}
+                    </div>
+                    <div class="carousel-controls">
+                        <button on:click={showPrevLetter} disabled={currentLetterIndex === 0}>이전</button>
+                        <span>{currentLetterIndex + 1} / {filteredLetters.length}</span>
+                        <button on:click={showNextLetter} disabled={currentLetterIndex >= filteredLetters.length - 1}>다음</button>
                     </div>
                 {/if}
             {/if}
         </div>
     {/if}
 
-    <!-- 알림 메시지 -->
     {#if notification}
-        <div class="notification" class:success={notification.type === 'success'}>
-            {notification.msg}
-        </div>
+        <div class="notification" class:success={notification.type === 'success'}>{notification.msg}</div>
     {/if}
 </main>
 
 <style>
-    /* (기존 스타일 일부 재사용 및 추가) */
     @import url('https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap');
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
     :global(body) { background-color: #f0f4f8; font-family: 'Noto Sans KR', sans-serif; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; padding-top: 2rem; }
@@ -265,7 +276,7 @@
     .page-container { background-color: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05); animation: fadeIn 0.5s ease-out; margin-top: 1.5rem; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .title { font-size: 1.75rem; font-weight: 700; color: #1e293b; text-align: center; margin-bottom: 0.5rem; }
-    .title.small { font-size: 1.5rem; margin: 0; flex-grow: 1; }
+    .title.small { font-size: 1.5rem; margin: 0; flex-grow: 1; text-align: center; }
     .subtitle { font-size: 1rem; color: #64748b; text-align: center; margin-bottom: 2rem; }
     .loading-text { text-align: center; color: #64748b; padding: 2rem 0; }
 
@@ -288,16 +299,78 @@
     .button.primary { background-color: #4f46e5; color: white; }
     .button.secondary { background-color: #e2e8f0; color: #475569; }
 
-    /* --- 겹침 문제 해결을 위한 수정 --- */
     .mailbox-header { display: flex; align-items: center; margin-bottom: 2rem; gap: 0.5rem; }
     .back-button { background: none; border: none; font-size: 1rem; font-weight: 500; color: #64748b; cursor: pointer; padding: 0.5rem; white-space: nowrap; }
 
-    .letter-grid { display: grid; gap: 1rem; }
-    .letter-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.5rem; display: flex; flex-direction: column; }
-    .letter-recipient { font-weight: 700; color: #334155; margin: 0 0 0.5rem; }
-    .letter-message { flex-grow: 1; font-family: 'Nanum Pen Script', cursive; font-size: 1.5rem; line-height: 1.5; color: #475569; background-color: #fff; padding: 1rem; border-radius: 8px; margin: 0 0 1rem; white-space: pre-wrap; }
-    .letter-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem; color: #64748b; }
+    /* --- 책장 넘기기 UI 스타일 --- */
+    .letter-carousel {
+        min-height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+    }
+    .letter-page {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 2rem;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+    .letter-message {
+        flex-grow: 1;
+        font-family: 'Nanum Pen Script', cursive;
+        font-size: 1.8rem;
+        line-height: 1.6;
+        color: #334155;
+        margin: 0 0 1.5rem;
+        white-space: pre-wrap;
+        min-height: 150px;
+    }
+    .letter-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 1rem;
+        color: #64748b;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 1rem;
+    }
     .letter-author { font-weight: 500; }
+
+    .carousel-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1.5rem;
+    }
+    .carousel-controls button {
+        background-color: #e2e8f0;
+        color: #475569;
+        border: none;
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+    .carousel-controls button:hover:not(:disabled) {
+        background-color: #cbd5e1;
+    }
+    .carousel-controls button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .carousel-controls span {
+        font-size: 1rem;
+        font-weight: 500;
+        color: #64748b;
+    }
 
     .notification { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 1rem 1.5rem; border-radius: 8px; background-color: #f87171; color: white; font-weight: 500; box-shadow: 0 4px 15px rgba(0,0,0,0.1); animation: slideIn 0.3s ease-out; }
     .notification.success { background-color: #4ade80; }
