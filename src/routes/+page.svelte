@@ -74,7 +74,8 @@
                     createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
                 };
             });
-        } catch (error) {
+        } catch (error)
+        {
             console.error("편지 목록 로딩 오류:", error);
             showNotification("편지 목록을 불러오는데 실패했습니다.");
         } finally {
@@ -264,7 +265,7 @@
     .page-container { background-color: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05); animation: fadeIn 0.5s ease-out; margin-top: 1.5rem; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .title { font-size: 1.75rem; font-weight: 700; color: #1e293b; text-align: center; margin-bottom: 0.5rem; }
-    .title.small { font-size: 1.5rem; margin: 0; }
+    .title.small { font-size: 1.5rem; margin: 0; flex-grow: 1; }
     .subtitle { font-size: 1rem; color: #64748b; text-align: center; margin-bottom: 2rem; }
     .loading-text { text-align: center; color: #64748b; padding: 2rem 0; }
 
@@ -287,8 +288,9 @@
     .button.primary { background-color: #4f46e5; color: white; }
     .button.secondary { background-color: #e2e8f0; color: #475569; }
 
-    .mailbox-header { display: flex; align-items: center; justify-content: center; position: relative; margin-bottom: 2rem; }
-    .back-button { position: absolute; left: 0; background: none; border: none; font-size: 1rem; font-weight: 500; color: #64748b; cursor: pointer; padding: 0.5rem; }
+    /* --- 겹침 문제 해결을 위한 수정 --- */
+    .mailbox-header { display: flex; align-items: center; margin-bottom: 2rem; gap: 0.5rem; }
+    .back-button { background: none; border: none; font-size: 1rem; font-weight: 500; color: #64748b; cursor: pointer; padding: 0.5rem; white-space: nowrap; }
 
     .letter-grid { display: grid; gap: 1rem; }
     .letter-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.5rem; display: flex; flex-direction: column; }
