@@ -247,7 +247,10 @@
                             <div class="letter-page">
                                 <p class="letter-message">"{filteredLetters[currentLetterIndex].message}"</p>
                                 <div class="letter-footer">
-                                    <span class="letter-author">From. {filteredLetters[currentLetterIndex].from}</span>
+                                    <div class="letter-info">
+                                        <span class="letter-author">From. {filteredLetters[currentLetterIndex].from}</span>
+                                        <span class="letter-date">{formatDate(filteredLetters[currentLetterIndex].createdAt)}</span>
+                                    </div>
                                     <div class="like-section">
                                         <button
                                                 class="like-button"
@@ -257,7 +260,6 @@
                                         </button>
                                         <span class="like-count">{filteredLetters[currentLetterIndex].likes}</span>
                                     </div>
-                                    <span class="letter-date">{formatDate(filteredLetters[currentLetterIndex].createdAt)}</span>
                                 </div>
                             </div>
                         {/key}
@@ -315,9 +317,11 @@
     .letter-page { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 2rem; width: 100%; display: flex; flex-direction: column; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
     .letter-message { flex-grow: 1; font-family: 'Nanum Pen Script', cursive; font-size: 1.8rem; line-height: 1.6; color: #334155; margin: 0 0 1.5rem; white-space: pre-wrap; min-height: 150px; }
 
-    .letter-footer { display: flex; justify-content: space-between; align-items: center; font-size: 1rem; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
-    .letter-author { font-weight: 500; }
-    .letter-date { text-align: right; }
+    /* --- 푸터 디자인 수정 --- */
+    .letter-footer { display: flex; justify-content: space-between; align-items: flex-end; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
+    .letter-info { display: flex; flex-direction: column; align-items: flex-start; }
+    .letter-author { font-weight: 700; font-size: 1.1rem; color: #334155; margin-bottom: 0.25rem; }
+    .letter-date { font-size: 0.9rem; }
 
     /* --- 좋아요 기능 스타일 --- */
     .like-section { display: flex; align-items: center; gap: 0.5rem; }
