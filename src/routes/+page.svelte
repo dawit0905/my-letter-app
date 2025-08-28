@@ -1,30 +1,12 @@
 <!--
   src/routes/+page.svelte
 
-  편지함을 책장처럼 넘겨보는 UI로 변경한 버전입니다.
+  페이지 로딩 시 fadeIn 애니메이션은 유지하고, 캐러셀 슬라이드 애니메이션만 제거한 버전입니다.
 -->
 <script>
     import { onMount } from 'svelte';
     import { initializeApp } from 'firebase/app';
     import { getFirestore, collection, getDocs, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
-    import { quintOut } from 'svelte/easing';
-    import { crossfade } from 'svelte/transition';
-
-    const [send, receive] = crossfade({
-        duration: d => Math.sqrt(d * 200),
-        fallback(node, params) {
-            const style = getComputedStyle(node);
-            const transform = style.transform === 'none' ? '' : style.transform;
-            return {
-                duration: 300,
-                easing: quintOut,
-                css: t => `
-          transform: ${transform} scale(${t});
-          opacity: ${t}
-        `
-            };
-        }
-    });
 
     // --- Firebase 설정 (환경 변수 사용) ---
     const firebaseConfig = {
@@ -56,7 +38,7 @@
     let author = '';
     let message = '';
     let notification = '';
-    let currentLetterIndex = 0; // 책장 넘기기 UI를 위한 현재 편지 인덱스
+    let currentLetterIndex = 0;
 
     // --- 데이터 로직 ---
     onMount(async () => {
@@ -131,7 +113,7 @@
     function handleSelectSoldierForMailbox(soldier) {
         selectedSoldierForMailbox = soldier;
         mailboxFlowPage = 'letters';
-        currentLetterIndex = 0; // 장병 선택 시 첫 번째 편지로 리셋
+        currentLetterIndex = 0;
     }
 
     function goBackToMailboxList() {
@@ -156,7 +138,6 @@
         return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
-    // 캐러셀 네비게이션 함수
     function showNextLetter() {
         if (currentLetterIndex < filteredLetters.length - 1) {
             currentLetterIndex++;
@@ -241,10 +222,9 @@
                 {:else if filteredLetters.length === 0}
                     <p class="loading-text">아직 도착한 편지가 없어요.</p>
                 {:else}
-                    <!-- 책장 넘기기 UI -->
                     <div class="letter-carousel">
                         {#key currentLetterIndex}
-                            <div class="letter-page" in:receive={{key: currentLetterIndex}} out:send={{key: currentLetterIndex}}>
+                            <div class="letter-page">
                                 <p class="letter-message">"{filteredLetters[currentLetterIndex].message}"</p>
                                 <div class="letter-footer">
                                     <span class="letter-author">From. {filteredLetters[currentLetterIndex].from}</span>
@@ -273,7 +253,7 @@
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
     :global(body) { background-color: #f0f4f8; font-family: 'Noto Sans KR', sans-serif; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; padding-top: 2rem; }
     main { width: 100%; max-width: 480px; padding: 1rem; position: relative; }
-    .page-container { background-color: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05); animation: fadeIn 0.5s ease-out; margin-top: 1.5rem; }
+    .page-container { background-color: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05); margin-top: 1.5rem; animation: fadeIn 0.5s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .title { font-size: 1.75rem; font-weight: 700; color: #1e293b; text-align: center; margin-bottom: 0.5rem; }
     .title.small { font-size: 1.5rem; margin: 0; flex-grow: 1; text-align: center; }
@@ -302,14 +282,12 @@
     .mailbox-header { display: flex; align-items: center; margin-bottom: 2rem; gap: 0.5rem; }
     .back-button { background: none; border: none; font-size: 1rem; font-weight: 500; color: #64748b; cursor: pointer; padding: 0.5rem; white-space: nowrap; }
 
-    /* --- 책장 넘기기 UI 스타일 --- */
     .letter-carousel {
         min-height: 300px;
         display: flex;
         align-items: center;
         justify-content: center;
         position: relative;
-        overflow: hidden;
     }
     .letter-page {
         background-color: #f8fafc;
